@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width,viewport-fit=cover,initial-scale=1.0,maximum-scale=1.0,user-scalable=no shrink-to-fit=no"/>
+    <title>BoweryLive</title>
+    <link rel="manifest" href="/static/manifest.json"/>
+    <link rel="stylesheet" href="https://unpkg.com/mdui@2/mdui.css">
+    <script src="https://unpkg.com/mdui@2/mdui.global.js"></script>
+    <script src="https://unpkg.com/speech-synthesis-recorder@1.2.1/SpeechSynthesisRecorder.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="icon" href="/static/logo_outlined.svg">
+    <style>
+        @font-face {
+            font-family: 'Material Icons';
+            font-style: normal;
+            font-weight: 100 700;
+            src: url(https://fonts.gstatic.com/s/materialsymbolsoutlined/v199/kJEhBvYX7BgnkSrUwT8OhrdQw4oELdPIeeII9v6oFsLjBuVY.woff2) format('woff2');
+        }
+
+        .material-symbols-outlined {
+            font-family: 'Material Icons';
+            font-weight: normal;
+            font-style: normal;
+            font-size: 24px;
+            line-height: 1;
+            letter-spacing: normal;
+            text-transform: none;
+            display: inline-block;
+            white-space: nowrap;
+            word-wrap: normal;
+            direction: ltr;
+            text-rendering: optimizeLegibility;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        * {
+            font-family: -apple-system, system-ui, PingFang SC, "Helvetica", serif;
+        }
+
+        @keyframes rotate {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        #panel {
+            position: fixed;
+            bottom: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            width: 75%;
+
+            & > #logo {
+                box-shadow: var(--mdui-elevation-level3);
+                border-radius: var(--shape-corner-normal);
+                line-height: 20px;
+                font-size: 14px;
+                border-radius: 16px;
+                padding: 6px 12px;
+            }
+
+            & > * {
+                background: transparent;
+                -webkit-backdrop-filter: blur(8px);
+                backdrop-filter: blur(8px);
+                overflow: hidden;
+                color: rgb(var(--mdui-color-on-background));
+                text-shadow: 0 0 8px rgb(var(--mdui-color-background));
+
+                &::after {
+                    content: " ";
+                    position: absolute;
+                    left: 0;
+                    top: 0;
+                    z-index: -1;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(var(--mdui-color-background), .2);
+                }
+            }
+        }
+
+        #record-button {
+            box-shadow: none;
+            height: 72px;
+            border-radius: 36px;
+            transition: var(--mdui-motion-duration-medium4);
+
+            &:active {
+                border-radius: 16px;
+                box-shadow: 0 0 12px 0 inset rgb(var(--mdui-color-error-container));
+            }
+
+            &::after {
+                content: " ";
+                position: absolute;
+                left: -50%;
+                top: -50%;
+                z-index: -1;
+                width: 200%;
+                height: 200%;
+                background: rgb(var(--mdui-color-background));
+                transition: var(--mdui-motion-duration-medium4);
+                opacity: .5;
+            }
+
+            &:active::after {
+                background: linear-gradient(
+                        45deg,
+                        rgb(var(--mdui-color-primary-container)),
+                        rgb(var(--mdui-color-secondary-container)),
+                        rgb(var(--mdui-color-tertiary-container)),
+                        rgb(var(--mdui-color-error-container))
+                );
+                opacity: .6;
+                transform: rotate(0deg);
+                animation: rotate infinite linear 3s;
+            }
+        }
+
+        #video-preview {
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            object-fit: cover;
+            width: 100%;
+            height: 100%;
+        }
+
+
+        #recording-text-container {
+            max-height: 20rem;
+            display: flex;
+            padding: 8px;
+            border-radius: 16px;
+
+            #recording-text {
+                width: 100%;
+                height: auto;
+                overflow-y: scroll;
+                text-align: justify;
+                opacity: 0;
+                transition: var(--mdui-motion-duration-medium4);
+
+                &:not(:empty) {
+                    opacity: 1;
+                }
+            }
+        }
+    </style>
+</head>
+<body>
+<video id="video-preview" muted playsinline></video>
+<div id="panel">
+    <div id="recording-text-container"><span id="recording-text"></span></div>
+    <mdui-button id="record-button" class="recording" ontouchstart="startRecognize()" ontouchend="stopRecord()">
+        <span class="material-symbols-outlined" id="mic-icon">mic</span>
+    </mdui-button>
+    <span id="logo">BoweryLive</span>
+</div>
+<canvas id="canvas" style="display: none"></canvas>
+<script>
+    mdui.setTheme("auto")
+
+    pastSentence = ""
+    image = ""
+    step = ""
+    $ = mdui.$
+
+    function takePhoto() {
+        var video_preview = document.querySelector("#video-preview")
+        const canvasElement = document.querySelector('#canvas');
+        canvasElement.width = video_preview.videoWidth;
+        canvasElement.height = video_preview.videoHeight;
+        const canvasContext = canvasElement.getContext('2d');
+        canvasContext.drawImage(video_preview, 0, 0, video_preview.videoWidth, video_preview.videoHeight);
+        const img = canvasElement.toDataURL('image/png');
+        return img.split(",")[1]
+    }
+
+    async function setCam() {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: "environment"
+            },
+            audio: false
+        })
+        const audioStream = await navigator.mediaDevices.getUserMedia({
+            video: false,
+            audio: true
+        })
+        mediaRecorder = new MediaRecorder(audioStream)
+
+        video_preview = document.querySelector("#video-preview")
+        video_preview.srcObject = stream
+        video_preview.muted = true
+        video_preview.play();
+        audioChunks = []
+
+        mediaRecorder.ondataavailable = (event) => {
+            audioChunks.push(event.data);
+        };
+
+        mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(audioChunks, {type: 'audio/wav'})
+            const reader = new FileReader()
+
+            reader.onloadend = () => {
+                const base64Audio = reader.result.split(',')[1]
+                send_message(base64Audio)
+            };
+
+            reader.readAsDataURL(audioBlob)
+        };
+    }
+
+    function send_message(audio) {
+        step = "fetching"
+        fetch("/chat", {
+            method: "POST",
+            body: JSON.stringify({
+                "message": pastSentence,
+                "audio": audio,
+                "image": image
+            })
+        }).then(response => {
+            const reader = response.body.getReader();
+            return reader.read().then(function process({done, value}) {
+                if (done) {
+                    return;
+                }
+                var data = new TextDecoder().decode(value)
+                data.split("-|BOWERY SPLIT|-").forEach((content) => {
+                    var cont = content.trim()
+                    if (cont.startsWith("{")) {
+                        data = JSON.parse(cont)
+                        speakNow(data.text)
+                        if (step === "fetching") {
+                            $("#recording-text").text(data.text)
+                            step = "answering"
+                        } else {
+                            $("#recording-text").text($("#recording-text").text() + data.text)
+                        }
+                    }
+                })
+                return reader.read().then(process);
+            });
+        })
+    }
+
+
+    function startRecognize() {
+        $("#recording-text").text("")
+        const recognition = new webkitSpeechRecognition() || new SpeechRecognition()
+        recognition.interimResults = true
+        image = takePhoto()
+        step = "listening"
+
+        recognition.onresult = (e) => {
+            if (pastSentence === e.results[0][0].transcript) {
+                startRecord()
+                return
+            }
+            pastSentence = e.results[0][0].transcript
+            $("#recording-text").text(pastSentence)
+        }
+
+        recognition.start()
+    }
+
+    function startRecord() {
+        if (step === "listening") {
+            step = "recording"
+            $("#recording-text").text("Recording...")
+            mediaRecorder.start()
+        }
+    }
+
+    function stopRecord() {
+        if (step === "recording") {
+            step = "thinking"
+            $("#recording-text").text("Thinking...")
+            mediaRecorder.stop();
+            setCam()
+        } else {
+            step = "thinking"
+            $("#recording-text").text("Thinking...")
+            send_message("Undefined")
+            setCam()
+        }
+    }
+
+    function speakNow(content) {
+        const synth = window.speechSynthesis
+        const msg = new SpeechSynthesisUtterance()
+        msg.text = content.replace(/\p{Emoji_Presentation}/gu, '')
+        synth.speak(msg)
+    }
+
+    mdui.alert({
+        description: "Play a demo to enable TTS autoplay",
+        confirmText: "Play",
+        onConfirm: () => {
+            speakNow("Bowery Live")
+        }
+    })
+
+    setCam()
+</script>
+</body>
+</html>

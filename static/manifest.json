@@ -1,0 +1,23 @@
+{
+  "short_name": "BoweryLive",
+  "name": "BoweryLive",
+  "start_url": "/",
+  "display": "standalone",
+  "icons": [
+    {
+      "src": "/static/logo_72.png",
+      "sizes": "72x72",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/logo_96.png",
+      "sizes": "96x96",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/logo_144.png",
+      "sizes": "144x144",
+      "type": "image/png"
+    }
+  ]
+}
